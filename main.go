@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/gob"
-	"encoding/json"
 	"io"
 	"io/ioutil"
 	"log"
@@ -42,16 +41,6 @@ func main() {
 	if err := writeIndexBinary(output, i); err != nil {
 		log.Fatalln("Can not write index", err)
 	}
-
-	outputJsonName := os.Args[2] + ".json"
-	outputJson, err := os.Create(outputJsonName)
-	if err != nil {
-		log.Fatalln("Can not create output file", outputJsonName, err)
-	}
-	defer outputJson.Close()
-	if err := writeIndexJson(outputJson, i); err != nil {
-		log.Fatalln("Can not write index", err)
-	}
 }
 
 func readFile(name string, i *index.Index) error {
@@ -65,9 +54,10 @@ func readFile(name string, i *index.Index) error {
 }
 
 func writeIndexBinary(file io.Writer, i *index.Index) error {
-	return gob.NewEncoder(file).Encode(i)
+	return gob.NewEncoder(file).Encode(*i)
 }
 
-func writeIndexJson(file io.Writer, i *index.Index) error {
-	return json.NewEncoder(file).Encode(i)
+func readIndexBinary(file io.Reader) (*index.Index, error) {
+	var i *index.Index
+	return i, gob.NewDecoder(file).Decode(i)
 }

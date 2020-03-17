@@ -14,13 +14,13 @@ type Source struct {
 type Occurences map[string][]int
 
 type Index struct {
-	Index   map[string]Occurences
+	Index   map[*Source]Occurences
 	Sources map[string]*Source
 }
 
 func NewIndex() *Index {
 	return &Index{
-		Index:   map[string]Occurences{},
+		Index:   map[*Source]Occurences{},
 		Sources: map[string]*Source{},
 	}
 }
@@ -52,12 +52,12 @@ func (i *Index) add(token string, position int, source *Source) error {
 	if _, ok := i.Sources[source.Name]; !ok {
 		i.Sources[source.Name] = source
 	}
-	if _, ok := i.Index[token]; !ok {
-		i.Index[token] = map[string][]int{}
+	if _, ok := i.Index[source]; !ok {
+		i.Index[source] = map[string][]int{}
 	}
-	if _, ok := i.Index[token][source.Name]; !ok {
-		i.Index[token][source.Name] = []int{}
+	if _, ok := i.Index[source][source.Name]; !ok {
+		i.Index[source][source.Name] = []int{}
 	}
-	i.Index[token][source.Name] = append(i.Index[token][source.Name], position)
+	i.Index[source][source.Name] = append(i.Index[source][source.Name], position)
 	return nil
 }
