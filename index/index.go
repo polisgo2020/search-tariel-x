@@ -18,7 +18,7 @@ type Source struct {
 }
 
 // Occurrences contain map of document to positions
-type Occurrences map[*Source][]int
+type Occurrences map[string][]int
 
 // Index store list of indexed documents and inverted index.
 type Index struct {
@@ -66,12 +66,12 @@ func (i *Index) add(token string, position int, source *Source) error {
 		i.Sources[source.Name] = source
 	}
 	if _, ok := i.Index[token]; !ok {
-		i.Index[token] = map[*Source][]int{}
+		i.Index[token] = map[string][]int{}
 	}
-	if _, ok := i.Index[token][source]; !ok {
-		i.Index[token][source] = []int{}
+	if _, ok := i.Index[token][source.Name]; !ok {
+		i.Index[token][source.Name] = []int{}
 	}
-	i.Index[token][source] = append(i.Index[token][source], position)
+	i.Index[token][source.Name] = append(i.Index[token][source.Name], position)
 	return nil
 }
 
@@ -87,10 +87,10 @@ type TmpResultItem struct {
 	score       int
 }
 
-type RangeAlgorithm func(items map[*Source]TmpResultItem, tokens []string) ([]Result, error)
+type RangeAlgorithm func(items map[*Source]*TmpResultItem, tokens []string) ([]Result, error)
 
 // ScoreByCount is the default scoring algorithm which ranges search results by count of found tokens.
-var ScoreByCount = func(items map[*Source]TmpResultItem, tokens []string) ([]Result, error) {
+var ScoreByCount = func(items map[*Source]*TmpResultItem, tokens []string) ([]Result, error) {
 	results := make([]Result, 0, len(items))
 
 	for source, item := range items {
@@ -121,7 +121,7 @@ func (i *Index) Search(query string, rangeAlgorithm RangeAlgorithm) ([]Result, e
 		return !unicode.IsLetter(r)
 	})
 
-	items := map[*Source]TmpResultItem{}
+	items := map[*Source]*TmpResultItem{}
 	tokens := make([]string, 0, len(rawTokens))
 
 	for _, rawToken := range rawTokens {
@@ -134,9 +134,10 @@ func (i *Index) Search(query string, rangeAlgorithm RangeAlgorithm) ([]Result, e
 		if !ok {
 			return nil, nil
 		}
-		for source, positions := range occurrences {
+		for document, positions := range occurrences {
+			source := i.Sources[document]
 			if _, ok := items[source]; !ok {
-				items[source] = TmpResultItem{
+				items[source] = &TmpResultItem{
 					count:       0,
 					occurrences: map[string][]int{},
 				}
