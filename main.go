@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/urfave/cli/v2"
 
@@ -67,14 +68,20 @@ func build(c *cli.Context) error {
 
 	i := index.NewIndex()
 
+	wg := &sync.WaitGroup{}
 	for _, file := range files {
 		if file.IsDir() {
 			continue
 		}
-		if err := readFile(filepath.Join(sourcesDir, file.Name()), i); err != nil {
-			return fmt.Errorf("cannot read file %s: %w", file.Name(), err)
-		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := readFile(filepath.Join(sourcesDir, file.Name()), i); err != nil {
+				log.Printf("cannot read file %s: %w", file.Name(), err)
+			}
+		}()
 	}
+	wg.Wait()
 
 	indexFile := c.String("index")
 	output, err := os.Create(indexFile)

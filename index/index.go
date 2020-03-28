@@ -20,18 +20,34 @@ type Source struct {
 // Occurrences contain map of document to positions
 type Occurrences map[string][]int
 
+type newToken struct {
+	source   *Source
+	token    string
+	position int
+}
+
 // Index store list of indexed documents and inverted index.
 type Index struct {
 	Index   map[string]Occurrences
 	Sources map[string]*Source
+	chanIn  chan newToken
+}
+
+func (i *Index) listen() {
+	for t := range i.chanIn {
+		i.add(t.token, t.position, t.source)
+	}
 }
 
 // NewIndex return empty index.
 func NewIndex() *Index {
-	return &Index{
+	i := &Index{
 		Index:   map[string]Occurrences{},
 		Sources: map[string]*Source{},
+		chanIn:  make(chan newToken, 10000),
 	}
+	go i.listen()
+	return i
 }
 
 // AddSource scan new document and add extracted tokens to the index.
@@ -46,8 +62,10 @@ func (i *Index) AddSource(name string, text io.Reader) error {
 		if stopwords.IsStopWord(token) {
 			continue
 		}
-		if err := i.add(token, position, source); err != nil {
-			return err
+		i.chanIn <- newToken{
+			source:   source,
+			token:    token,
+			position: position,
 		}
 		position++
 	}
