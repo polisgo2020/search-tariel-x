@@ -152,7 +152,7 @@ func search(c *cli.Context) error {
 			return err
 		}
 		for i, result := range results {
-			log.Printf("%d. %s", i+1, result.Document.Name)
+			fmt.Printf("%d. %s\n", i+1, result.Document.Name)
 		}
 	}
 

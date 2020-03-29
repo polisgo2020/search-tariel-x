@@ -113,6 +113,8 @@ func (i *Index) prepare(rawToken string) string {
 }
 
 func (i *Index) add(token string, position int, source Source) error {
+	i.m.Lock()
+	defer i.m.Unlock()
 	if _, ok := i.Sources[source.Name]; !ok {
 		i.Sources[source.Name] = &source
 	}
@@ -122,8 +124,6 @@ func (i *Index) add(token string, position int, source Source) error {
 	if _, ok := i.Index[token][source.Name]; !ok {
 		i.Index[token][source.Name] = []int{}
 	}
-	i.m.Lock()
-	defer i.m.Unlock()
 	i.Index[token][source.Name] = append(i.Index[token][source.Name], position)
 	return nil
 }
@@ -185,7 +185,9 @@ func (i *Index) Search(query string, rangeAlgorithm RangeAlgorithm) ([]Result, e
 			continue
 		}
 
+		i.m.RLock()
 		occurrences, ok := i.Index[token]
+		i.m.RUnlock()
 		if !ok {
 			return nil, nil
 		}
