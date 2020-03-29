@@ -3,8 +3,8 @@ package main
 import (
 	"bufio"
 	"encoding/gob"
+	"encoding/json"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -22,13 +22,14 @@ func main() {
 	app.Usage = "generate index from text files and search over them"
 
 	indexFileFlag := &cli.StringFlag{
-		Name:  "index, i",
-		Usage: "Index file",
+		Name:     "index, i",
+		Usage:    "Index file",
+		Required: true,
 	}
 
-	sourcesFlag := &cli.StringFlag{
-		Name:  "sources, s",
-		Usage: "Files to index",
+	jsonFlag := &cli.BoolFlag{
+		Name:  "json",
+		Usage: "Use json-encoded index",
 	}
 
 	app.Commands = []*cli.Command{
@@ -38,7 +39,12 @@ func main() {
 			Usage:   "Build search index",
 			Flags: []cli.Flag{
 				indexFileFlag,
-				sourcesFlag,
+				&cli.StringFlag{
+					Name:     "sources, s",
+					Usage:    "Files to index",
+					Required: true,
+				},
+				jsonFlag,
 			},
 			Action: build,
 		},
@@ -48,6 +54,7 @@ func main() {
 			Usage:   "Search over the index",
 			Flags: []cli.Flag{
 				indexFileFlag,
+				jsonFlag,
 			},
 			Action: search,
 		},
@@ -74,12 +81,12 @@ func build(c *cli.Context) error {
 			continue
 		}
 		wg.Add(1)
-		go func() {
+		go func(fileName string) {
 			defer wg.Done()
-			if err := readFile(filepath.Join(sourcesDir, file.Name()), i); err != nil {
-				log.Printf("cannot read file %s: %w", file.Name(), err)
+			if err := readFile(fileName, i); err != nil {
+				log.Printf("cannot read file %s: %w", fileName, err)
 			}
-		}()
+		}(filepath.Join(sourcesDir, file.Name()))
 	}
 	wg.Wait()
 
@@ -89,7 +96,15 @@ func build(c *cli.Context) error {
 		return fmt.Errorf("can not create output file %s: %w", indexFile, err)
 	}
 	defer output.Close()
-	if err := writeIndexBinary(output, i); err != nil {
+
+	var encoder index.Encoder
+	if c.Bool("json") {
+		encoder = json.NewEncoder(output)
+	} else {
+		encoder = gob.NewEncoder(output)
+	}
+
+	if err := i.Encode(encoder); err != nil {
 		return fmt.Errorf("can not write index: %w", err)
 	}
 
@@ -106,17 +121,21 @@ func readFile(name string, i *index.Index) error {
 	return i.AddSource(name, input)
 }
 
-func writeIndexBinary(file io.Writer, i *index.Index) error {
-	return gob.NewEncoder(file).Encode(*i)
-}
-
 func search(c *cli.Context) error {
 	indexFile := c.String("index")
 	file, err := os.Open(indexFile)
 	if err != nil {
 		return fmt.Errorf("can not open index file %s: %w", indexFile, err)
 	}
-	index, err := readIndexBinary(file)
+
+	var decoder index.Decoder
+	if c.Bool("json") {
+		decoder = json.NewDecoder(file)
+	} else {
+		decoder = gob.NewDecoder(file)
+	}
+
+	index, err := index.Decode(decoder)
 	if err != nil {
 		return fmt.Errorf("can not read index file %s: %w", indexFile, err)
 	}
@@ -138,9 +157,4 @@ func search(c *cli.Context) error {
 	}
 
 	return nil
-}
-
-func readIndexBinary(file io.Reader) (*index.Index, error) {
-	i := &index.Index{}
-	return i, gob.NewDecoder(file).Decode(i)
 }
