@@ -147,7 +147,7 @@ type TmpResultItem struct {
 type RangeAlgorithm func(items map[*Source]*TmpResultItem, tokens []string) ([]Result, error)
 
 // ScoreByCount is the default scoring algorithm which ranges search results by count of found tokens.
-var ScoreByCount = func(items map[*Source]*TmpResultItem, tokens []string) ([]Result, error) {
+func ScoreByCount(items map[*Source]*TmpResultItem, tokens []string) ([]Result, error) {
 	results := make([]Result, 0, len(items))
 
 	for source, item := range items {
