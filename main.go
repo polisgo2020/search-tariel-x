@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
@@ -10,10 +9,13 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/urfave/cli/v2"
 
 	"github.com/polisgo2020/search-tariel-x/index"
+	ifaceCli "github.com/polisgo2020/search-tariel-x/interface/cli"
+	"github.com/polisgo2020/search-tariel-x/interface/ws"
 )
 
 func main() {
@@ -22,7 +24,8 @@ func main() {
 	app.Usage = "generate index from text files and search over them"
 
 	indexFileFlag := &cli.StringFlag{
-		Name:     "index, i",
+		Name:     "index",
+		Aliases:  []string{"i"},
 		Usage:    "Index file",
 		Required: true,
 	}
@@ -40,7 +43,8 @@ func main() {
 			Flags: []cli.Flag{
 				indexFileFlag,
 				&cli.StringFlag{
-					Name:     "sources, s",
+					Name:     "sources",
+					Aliases:  []string{"s"},
 					Usage:    "Files to index",
 					Required: true,
 				},
@@ -55,6 +59,11 @@ func main() {
 			Flags: []cli.Flag{
 				indexFileFlag,
 				jsonFlag,
+				&cli.StringFlag{
+					Name:    "listen",
+					Aliases: []string{"l"},
+					Usage:   "Interface to listen",
+				},
 			},
 			Action: search,
 		},
@@ -73,7 +82,7 @@ func build(c *cli.Context) error {
 		return err
 	}
 
-	i := index.NewIndex()
+	i := index.NewIndex(nil)
 
 	wg := &sync.WaitGroup{}
 	for _, file := range files {
@@ -140,21 +149,17 @@ func search(c *cli.Context) error {
 		return fmt.Errorf("can not read index file %s: %w", indexFile, err)
 	}
 
-	for {
-		reader := bufio.NewReader(os.Stdin)
-		query, err := reader.ReadString('\n')
-		if err != nil {
-			return fmt.Errorf("can not read query: %w", err)
-		}
-
-		results, err := index.Search(query, nil)
+	if c.String("listen") == "" {
+		iface, err := ifaceCli.New(os.Stdin, os.Stdout, index)
 		if err != nil {
 			return err
 		}
-		for i, result := range results {
-			fmt.Printf("%d. %s\n", i+1, result.Document.Name)
-		}
+		return iface.Run()
 	}
 
-	return nil
+	iface, err := ws.New(c.String("listen"), 10*time.Second, index)
+	if err != nil {
+		return err
+	}
+	return iface.Run()
 }

@@ -58,10 +58,11 @@ type newToken struct {
 
 // Index store list of indexed documents and inverted index.
 type Index struct {
-	Index   map[string]Occurrences
-	Sources map[string]*Source
-	chanIn  chan newToken
-	m       *sync.RWMutex
+	Index          map[string]Occurrences
+	Sources        map[string]*Source
+	rangeAlgorithm RangeAlgorithm
+	chanIn         chan newToken
+	m              *sync.RWMutex
 }
 
 func (i *Index) listen() {
@@ -72,12 +73,13 @@ func (i *Index) listen() {
 
 // NewIndex return empty index.
 // Use NewIndex function instead of creating empty instance of index.
-func NewIndex() *Index {
+func NewIndex(rangeAlgorithm RangeAlgorithm) *Index {
 	i := &Index{
-		Index:   map[string]Occurrences{},
-		Sources: map[string]*Source{},
-		chanIn:  make(chan newToken),
-		m:       &sync.RWMutex{},
+		Index:          map[string]Occurrences{},
+		Sources:        map[string]*Source{},
+		chanIn:         make(chan newToken),
+		m:              &sync.RWMutex{},
+		rangeAlgorithm: rangeAlgorithm,
 	}
 	go i.listen()
 	return i
@@ -171,7 +173,7 @@ var ScoreByCount = func(items map[*Source]*TmpResultItem, tokens []string) ([]Re
 
 // Search query over the index.
 // The default range algorithm is `ScoreByCount` which ranges search results by count of found tokens.
-func (i *Index) Search(query string, rangeAlgorithm RangeAlgorithm) ([]Result, error) {
+func (i *Index) Search(query string) ([]Result, error) {
 	rawTokens := strings.FieldsFunc(query, func(r rune) bool {
 		return !unicode.IsLetter(r)
 	})
@@ -207,11 +209,11 @@ func (i *Index) Search(query string, rangeAlgorithm RangeAlgorithm) ([]Result, e
 		tokens = append(tokens, token)
 	}
 
-	if rangeAlgorithm == nil {
+	if i.rangeAlgorithm == nil {
 		return ScoreByCount(items, tokens)
 	}
 
-	return rangeAlgorithm(items, tokens)
+	return i.rangeAlgorithm(items, tokens)
 }
 
 // Encoder is the interface implemented by the object that can encode data from the Index.
@@ -236,7 +238,7 @@ type Decoder interface {
 
 // Decode is the thread-safe function to extract index from the encoded data.
 func Decode(decoder Decoder) (*Index, error) {
-	i := NewIndex()
+	i := NewIndex(nil)
 	i.m.Lock()
 	defer i.m.Unlock()
 	return i, decoder.Decode(i)
