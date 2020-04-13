@@ -12,7 +12,7 @@ import (
 )
 
 type Ws struct {
-	listen string
+	listen    string
 	i         *index.Index
 	server    http.Server
 	indexTpl  *template.Template
@@ -38,7 +38,7 @@ func New(listen string, timeout time.Duration, i *index.Index) (*Ws, error) {
 	}
 
 	ws := &Ws{
-		listen: listen,
+		listen:    listen,
 		i:         i,
 		indexTpl:  indexTpl,
 		searchTpl: searchTpl,

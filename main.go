@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/urfave/cli/v2"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"github.com/urfave/cli/v2"
 
 	"github.com/polisgo2020/search-tariel-x/index"
 	ifaceCli "github.com/polisgo2020/search-tariel-x/interface/cli"
