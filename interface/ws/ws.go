@@ -4,14 +4,15 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
-	"log"
 	"net/http"
 	"time"
 
 	"github.com/polisgo2020/search-tariel-x/index"
+	"github.com/rs/zerolog/log"
 )
 
 type Ws struct {
+	listen string
 	i         *index.Index
 	server    http.Server
 	indexTpl  *template.Template
@@ -37,6 +38,7 @@ func New(listen string, timeout time.Duration, i *index.Index) (*Ws, error) {
 	}
 
 	ws := &Ws{
+		listen: listen,
 		i:         i,
 		indexTpl:  indexTpl,
 		searchTpl: searchTpl,
@@ -46,14 +48,30 @@ func New(listen string, timeout time.Duration, i *index.Index) (*Ws, error) {
 	mux.HandleFunc("/", ws.indexHandler)
 	mux.HandleFunc("/search", ws.searchHandler)
 
+	logMw := logMiddleware(mux)
+
 	ws.server = http.Server{
 		Addr:         listen,
-		Handler:      mux,
+		Handler:      logMw,
 		ReadTimeout:  timeout,
 		WriteTimeout: timeout,
 	}
 
 	return ws, nil
+}
+
+func logMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		next.ServeHTTP(w, r)
+
+		log.Debug().
+			Str("method", r.Method).
+			Str("remote", r.RemoteAddr).
+			Str("path", r.URL.Path).
+			Int("duration", int(time.Since(start))).
+			Msgf("Called url %s", r.URL.Path)
+	})
 }
 
 func (ws *Ws) indexHandler(w http.ResponseWriter, r *http.Request) {
@@ -82,5 +100,6 @@ func (ws *Ws) searchHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ws *Ws) Run() error {
+	log.Info().Str("interface", ws.listen).Msg("started to listen")
 	return ws.server.ListenAndServe()
 }
