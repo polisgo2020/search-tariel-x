@@ -1,0 +1,16 @@
+<html>
+<head>
+    <title>Search {{.Query}}</title>
+</head>
+<body>
+<form method="get" action="/search">
+    <input type="text" name="q" value="{{.Query}}">
+    <input type="submit" value="Search">
+</form>
+<h3>Results</h3>
+{{range .Results}}
+    <b>{{.Document.Name}}</b>
+    <br />
+{{end}}
+</body>
+</html>

@@ -3,29 +3,19 @@ package ws
 import (
 	"errors"
 	"fmt"
+	"html/template"
 	"log"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/polisgo2020/search-tariel-x/index"
 )
 
-var tpl = `
-<html>
-	<body>
-	<form action="/" method="get">
-		<input type="text" name="query">
-		<input type="submit" value="Search">
-	</form>
-	%s
-	</body>
-</html>
-`
-
 type Ws struct {
-	i      *index.Index
-	server http.Server
+	i         *index.Index
+	server    http.Server
+	indexTpl  *template.Template
+	searchTpl *template.Template
 }
 
 func New(listen string, timeout time.Duration, i *index.Index) (*Ws, error) {
@@ -37,12 +27,24 @@ func New(listen string, timeout time.Duration, i *index.Index) (*Ws, error) {
 		return nil, errors.New("incorrect listen interface")
 	}
 
+	indexTpl, err := template.ParseFiles("interface/ws/templates/index.html")
+	if err != nil {
+		return nil, fmt.Errorf("can not read index template %w", err)
+	}
+	searchTpl, err := template.ParseFiles("interface/ws/templates/search.html")
+	if err != nil {
+		return nil, fmt.Errorf("can not read search template %w", err)
+	}
+
 	ws := &Ws{
-		i: i,
+		i:         i,
+		indexTpl:  indexTpl,
+		searchTpl: searchTpl,
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", ws.handler)
+	mux.HandleFunc("/", ws.indexHandler)
+	mux.HandleFunc("/search", ws.searchHandler)
 
 	ws.server = http.Server{
 		Addr:         listen,
@@ -54,24 +56,29 @@ func New(listen string, timeout time.Duration, i *index.Index) (*Ws, error) {
 	return ws, nil
 }
 
-func (ws *Ws) handler(w http.ResponseWriter, r *http.Request) {
-	query := r.URL.Query().Get("query")
+func (ws *Ws) indexHandler(w http.ResponseWriter, r *http.Request) {
+	ws.indexTpl.Execute(w, nil)
+}
 
-	var result string
+func (ws *Ws) searchHandler(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("q")
+
+	var results []index.Result
+	var err error
 	if query != "" {
-		results, err := ws.i.Search(query)
+		results, err = ws.i.Search(query)
 		if err != nil {
 			log.Printf("Error search %q over index: %q", query, err)
 			fmt.Fprintf(w, "Error search %q over index.", query)
 		}
-		resultsList := make([]string, 0, len(results))
-		for _, result := range results {
-			resultsList = append(resultsList, fmt.Sprintf("<li>%s, score %d</li>", result.Document.Name, result.Score))
-		}
-		result = fmt.Sprintf("<p><ul>%s</ul></p>", strings.Join(resultsList, "\n"))
 	}
-
-	fmt.Fprintf(w, tpl, result)
+	ws.searchTpl.Execute(w, struct {
+		Results []index.Result
+		Query   string
+	}{
+		Results: results,
+		Query:   query,
+	})
 }
 
 func (ws *Ws) Run() error {
