@@ -5,13 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
+	stdLog "log"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/urfave/cli/v2"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 
 	"github.com/polisgo2020/search-tariel-x/index"
 	ifaceCli "github.com/polisgo2020/search-tariel-x/interface/cli"
@@ -22,6 +24,7 @@ func main() {
 	app := cli.NewApp()
 	app.Name = "Search index"
 	app.Usage = "generate index from text files and search over them"
+	app.Before = initLogger
 
 	indexFileFlag := &cli.StringFlag{
 		Name:     "index",
@@ -33,6 +36,13 @@ func main() {
 	jsonFlag := &cli.BoolFlag{
 		Name:  "json",
 		Usage: "Use json-encoded index",
+	}
+
+	logLevelFlag := &cli.StringFlag{
+		Name:    "logLevel",
+		Usage:   "Log level",
+		Value:   "debug",
+		EnvVars: []string{"LOG_LEVEL"},
 	}
 
 	app.Commands = []*cli.Command{
@@ -49,6 +59,7 @@ func main() {
 					Required: true,
 				},
 				jsonFlag,
+				logLevelFlag,
 			},
 			Action: build,
 		},
@@ -59,10 +70,12 @@ func main() {
 			Flags: []cli.Flag{
 				indexFileFlag,
 				jsonFlag,
+				logLevelFlag,
 				&cli.StringFlag{
 					Name:    "listen",
 					Aliases: []string{"l"},
 					Usage:   "Interface to listen",
+					EnvVars: []string{"LISTEN"},
 				},
 			},
 			Action: search,
@@ -71,11 +84,24 @@ func main() {
 
 	err := app.Run(os.Args)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal().Err(err).Msg("error")
 	}
 }
 
+func initLogger(c *cli.Context) error {
+	logLevel, err := zerolog.ParseLevel(c.String("logLevel"))
+	if err != nil {
+		stdLog.Print(err)
+		return err
+	}
+	zerolog.SetGlobalLevel(logLevel)
+	return nil
+}
+
 func build(c *cli.Context) error {
+	if err := initLogger(c); err != nil {
+		return err
+	}
 	sourcesDir := c.String("sources")
 	files, err := ioutil.ReadDir(sourcesDir)
 	if err != nil {
@@ -131,6 +157,9 @@ func readFile(name string, i *index.Index) error {
 }
 
 func search(c *cli.Context) error {
+	if err := initLogger(c); err != nil {
+		return err
+	}
 	indexFile := c.String("index")
 	file, err := os.Open(indexFile)
 	if err != nil {
