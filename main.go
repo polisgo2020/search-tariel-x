@@ -108,7 +108,8 @@ func build(c *cli.Context) error {
 		return err
 	}
 
-	i := index.NewIndex(nil)
+	engine := index.NewMemoryIndex()
+	i := index.NewIndex(engine, nil)
 
 	wg := &sync.WaitGroup{}
 	for _, file := range files {
@@ -139,7 +140,7 @@ func build(c *cli.Context) error {
 		encoder = gob.NewEncoder(output)
 	}
 
-	if err := i.Encode(encoder); err != nil {
+	if err := engine.Encode(encoder); err != nil {
 		return fmt.Errorf("can not write index: %w", err)
 	}
 
@@ -173,10 +174,11 @@ func search(c *cli.Context) error {
 		decoder = gob.NewDecoder(file)
 	}
 
-	index, err := index.Decode(decoder)
+	engine, err := index.Decode(decoder)
 	if err != nil {
 		return fmt.Errorf("can not read index file %s: %w", indexFile, err)
 	}
+	index := index.NewIndex(engine, nil)
 
 	if c.String("listen") == "" {
 		iface, err := ifaceCli.New(os.Stdin, os.Stdout, index)
