@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-pg/pg/v9"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v2"
@@ -27,10 +28,16 @@ func main() {
 	app.Before = initLogger
 
 	indexFileFlag := &cli.StringFlag{
-		Name:     "index",
-		Aliases:  []string{"i"},
-		Usage:    "Index file",
-		Required: true,
+		Name:    "index",
+		Aliases: []string{"i"},
+		Usage:   "Index file",
+	}
+
+	pgFlag := &cli.StringFlag{
+		Name:    "postgresql",
+		Aliases: []string{"pg"},
+		Usage:   "Postgresql connection strings",
+		EnvVars: []string{"PG_SQL"},
 	}
 
 	jsonFlag := &cli.BoolFlag{
@@ -51,6 +58,7 @@ func main() {
 			Aliases: []string{"b"},
 			Usage:   "Build search index",
 			Flags: []cli.Flag{
+				logLevelFlag,
 				indexFileFlag,
 				&cli.StringFlag{
 					Name:     "sources",
@@ -59,7 +67,7 @@ func main() {
 					Required: true,
 				},
 				jsonFlag,
-				logLevelFlag,
+				pgFlag,
 			},
 			Action: build,
 		},
@@ -68,9 +76,10 @@ func main() {
 			Aliases: []string{"s"},
 			Usage:   "Search over the index",
 			Flags: []cli.Flag{
+				logLevelFlag,
 				indexFileFlag,
 				jsonFlag,
-				logLevelFlag,
+				pgFlag,
 				&cli.StringFlag{
 					Name:    "listen",
 					Aliases: []string{"l"},
@@ -158,26 +167,25 @@ func readFile(name string, i *index.Index) error {
 }
 
 func search(c *cli.Context) error {
-	if err := initLogger(c); err != nil {
+	var err error
+	if err = initLogger(c); err != nil {
 		return err
 	}
-	indexFile := c.String("index")
-	file, err := os.Open(indexFile)
-	if err != nil {
-		return fmt.Errorf("can not open index file %s: %w", indexFile, err)
+	var engine index.IndexEngine
+	if c.String("index") != "" {
+		engine, err = getMemoryEngine(c)
+		if err != nil {
+			return err
+		}
 	}
+	if c.String("postgresql") != "" {
+		engine, err = getPgEngine(c)
+		if err != nil {
+			return err
+		}
+	}
+	defer engine.Close()
 
-	var decoder index.Decoder
-	if c.Bool("json") {
-		decoder = json.NewDecoder(file)
-	} else {
-		decoder = gob.NewDecoder(file)
-	}
-
-	engine, err := index.Decode(decoder)
-	if err != nil {
-		return fmt.Errorf("can not read index file %s: %w", indexFile, err)
-	}
 	index := index.NewIndex(engine, nil)
 
 	if c.String("listen") == "" {
@@ -193,4 +201,29 @@ func search(c *cli.Context) error {
 		return err
 	}
 	return iface.Run()
+}
+
+func getMemoryEngine(c *cli.Context) (index.IndexEngine, error) {
+	indexFile := c.String("index")
+	file, err := os.Open(indexFile)
+	if err != nil {
+		return nil, fmt.Errorf("can not open index file %s: %w", indexFile, err)
+	}
+
+	var decoder index.Decoder
+	if c.Bool("json") {
+		decoder = json.NewDecoder(file)
+	} else {
+		decoder = gob.NewDecoder(file)
+	}
+	return index.Decode(decoder)
+}
+
+func getPgEngine(c *cli.Context) (index.IndexEngine, error) {
+	pgOpt, err := pg.ParseURL(c.String("postgresql"))
+	if err != nil {
+		return nil, err
+	}
+	pgdb := pg.Connect(pgOpt)
+	return index.NewDbIndex(pgdb), nil
 }

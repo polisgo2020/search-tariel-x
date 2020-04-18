@@ -58,6 +58,7 @@ type newToken struct {
 type IndexEngine interface {
 	Add(token string, position int, source Source) error
 	Get(token string) (Occurrences, error)
+	Close()
 }
 
 // Index store list of indexed documents and inverted index.
