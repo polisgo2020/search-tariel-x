@@ -1,12 +1,13 @@
 /*
 Package index implements inverted index with thread-safe functions to index new documents, to search over the built
-index, to encode and to decode the index.
+index, to encode and to decode the index. Inverted index uses in-memory or database engine.
 
 Usage
 
-To create new empty index instance use NewIndex function
+To create new empty index instance use NewIndex function with created engine. E.g. new index with in-memory engine:
 
-	i := index.NewIndex()
+	engine := index.NewMemoryIndex()
+	i := index.NewIndex(engine, nil)
 
 which would create instance in thread-safe way starting internal channel listener to add new tokens.
 
@@ -16,17 +17,18 @@ and add them to the index. AddSource can be called in thread-safe way, e.g.:
 	input := bytes.NewBuffer([]byte("input document"))
 	err := i.AddSource("document name", input)
 
-To encode index to file system, network, etc. use Encode function with the object which implements Encoder interface.
+To encode in-memory index to file system, network, etc. use Encode function with the object which implements Encoder interface.
 
 	encoder := json.NewEncoder(file)
-	err := i.Encode(encoder)
+	err := engine.Encode(encoder)
 
-To create index from encoded data use Decode function.
+To create in-memory index from encoded data use Decode function.
 
 	decoder := gob.NewDecoder(file)
-	i, err := index.Decode(decoder)
+	engine, err := index.Decode(decoder)
+	i := index.NewIndex(engine, nil)
 
-Do not encode and decode index directly with for example json.Marshal because it may lead to data races.
+Do not encode and decode in-memory engine directly with for example json.Marshal because it may lead to data races.
 */
 package index
 
@@ -56,13 +58,17 @@ type newToken struct {
 	position int
 }
 
+// IndexEngine is the interface for the data storage object.
 type IndexEngine interface {
+	// Add new token to the storage.
 	Add(token string, position int, source Source) error
+	// Get list of occurences for the list of tokens.
 	Get(tokens []string) (map[string]Occurrences, error)
+	// Close the storage.
 	Close()
 }
 
-// Index store list of indexed documents and inverted index.
+// Index uses engine to store the list of indexed documents, the inverted index and search over the index.
 type Index struct {
 	engine         IndexEngine
 	rangeAlgorithm RangeAlgorithm

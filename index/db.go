@@ -25,6 +25,7 @@ func (d dbLogger) AfterQuery(c context.Context, q *pg.QueryEvent) error {
 	return nil
 }
 
+// DbIndex is postgresql-based engine for storing inverted index.
 type DbIndex struct {
 	pg             *pg.DB
 	tokensCache    map[string]int
@@ -34,6 +35,8 @@ type DbIndex struct {
 	insertC        chan Occurrence
 }
 
+// NewDbIndex creates new postgresql-based engine.
+// Use the method instead of creating empty struct.
 func NewDbIndex(pg *pg.DB) *DbIndex {
 	pg.AddQueryHook(dbLogger{})
 	i := &DbIndex{
@@ -48,16 +51,19 @@ func NewDbIndex(pg *pg.DB) *DbIndex {
 	return i
 }
 
+// Token is the container for a token in PgSQL.
 type Token struct {
 	ID    int    `pg:"id,pk"`
 	Token string `pg:"token"`
 }
 
+// Document is the container for a document in PgSQL.
 type Document struct {
 	ID   int    `pg:"id,pk"`
 	Name string `pg:"name"`
 }
 
+// Occurrence is the container for an occurrence in PgSQL.
 type Occurrence struct {
 	ID         int `pg:"id,pk"`
 	TokenID    int `pg:"token_id"`
@@ -88,6 +94,8 @@ func (i *DbIndex) flush() {
 	}
 }
 
+// Add adds new token, document and position to the database.
+// If the token or the document has been already inserted the function would take it from cache.
 func (i *DbIndex) Add(token string, position int, source Source) error {
 	tkn, err := i.getToken(token)
 	if err != nil {
@@ -169,6 +177,7 @@ func (i *DbIndex) getDocument(name string) (*Document, error) {
 	return doc, err
 }
 
+// Get returns occurrences list for the list of tokens.
 func (i *DbIndex) Get(tokens []string) (map[string]Occurrences, error) {
 	type item struct {
 		Position int    `pg:"position"`
@@ -206,6 +215,7 @@ func (i *DbIndex) Get(tokens []string) (map[string]Occurrences, error) {
 	return results, err
 }
 
+// Close the engine.
 func (i *DbIndex) Close() {
 	i.pg.Close()
 }

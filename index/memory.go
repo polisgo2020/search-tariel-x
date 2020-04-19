@@ -22,6 +22,7 @@ func NewMemoryIndex() *MemoryIndex {
 	return i
 }
 
+// Add adds new token, document and position to the memory list.
 func (i *MemoryIndex) Add(token string, position int, source Source) error {
 	i.m.Lock()
 	defer i.m.Unlock()
@@ -38,6 +39,7 @@ func (i *MemoryIndex) Add(token string, position int, source Source) error {
 	return nil
 }
 
+// Get returns occurrences list for the list of tokens.
 func (i *MemoryIndex) Get(tokens []string) (map[string]Occurrences, error) {
 	i.m.RLock()
 	defer i.m.RUnlock()
