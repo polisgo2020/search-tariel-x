@@ -43,6 +43,8 @@ LISTEN=0.0.0.0:8080 ./search search file --index index.data
 
 ### Use PostgreSQL
 
+Create migrations with [migrations package](migrations/README.md).
+
 Build:
 
 ```bash
