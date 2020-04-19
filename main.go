@@ -241,6 +241,9 @@ func searchFile(c *cli.Context) error {
 }
 
 func searchDb(c *cli.Context) error {
+	if err := initLogger(c); err != nil {
+		return err
+	}
 	engine, err := getDbEngine(c)
 	if err != nil {
 		return err
@@ -274,5 +277,6 @@ func getDbEngine(c *cli.Context) (index.IndexEngine, error) {
 		return nil, err
 	}
 	pgdb := pg.Connect(pgOpt)
+	log.Info().Msg("connected to db")
 	return index.NewDbIndex(pgdb), nil
 }

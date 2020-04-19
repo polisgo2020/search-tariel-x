@@ -73,6 +73,9 @@ func (i *DbIndex) flush() {
 	for {
 		select {
 		case <-ticker.C:
+			if len(insertList) == 0 {
+				continue
+			}
 			if _, err := i.pg.Model(&insertList).Insert(); err != nil {
 				log.Err(err).Msg("error inserting rows")
 				continue
