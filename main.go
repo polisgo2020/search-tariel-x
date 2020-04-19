@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-pg/pg/v9"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v2"
@@ -33,6 +34,14 @@ func main() {
 		Required: true,
 	}
 
+	pgFlag := &cli.StringFlag{
+		Name:     "postgresql",
+		Aliases:  []string{"pg"},
+		Usage:    "Postgresql connection strings",
+		EnvVars:  []string{"PGSQL"},
+		Required: true,
+	}
+
 	jsonFlag := &cli.BoolFlag{
 		Name:  "json",
 		Usage: "Use json-encoded index",
@@ -45,40 +54,70 @@ func main() {
 		EnvVars: []string{"LOG_LEVEL"},
 	}
 
+	sourceFlag := &cli.StringFlag{
+		Name:     "sources",
+		Aliases:  []string{"s"},
+		Usage:    "Files to index",
+		Required: true,
+	}
+
+	listenFlag := &cli.StringFlag{
+		Name:    "listen",
+		Aliases: []string{"l"},
+		Usage:   "Interface to listen",
+		EnvVars: []string{"LISTEN"},
+	}
+
 	app.Commands = []*cli.Command{
 		{
-			Name:    "build",
-			Aliases: []string{"b"},
-			Usage:   "Build search index",
-			Flags: []cli.Flag{
-				indexFileFlag,
-				&cli.StringFlag{
-					Name:     "sources",
-					Aliases:  []string{"s"},
-					Usage:    "Files to index",
-					Required: true,
+			Name:  "build",
+			Usage: "Build search index",
+			Subcommands: []*cli.Command{
+				{
+					Name: "file",
+					Flags: []cli.Flag{
+						logLevelFlag,
+						indexFileFlag,
+						sourceFlag,
+						jsonFlag,
+					},
+					Action: buildFile,
 				},
-				jsonFlag,
-				logLevelFlag,
+				{
+					Name: "db",
+					Flags: []cli.Flag{
+						logLevelFlag,
+						sourceFlag,
+						pgFlag,
+					},
+					Action: buildDb,
+				},
 			},
-			Action: build,
 		},
 		{
-			Name:    "search",
-			Aliases: []string{"s"},
-			Usage:   "Search over the index",
-			Flags: []cli.Flag{
-				indexFileFlag,
-				jsonFlag,
-				logLevelFlag,
-				&cli.StringFlag{
-					Name:    "listen",
-					Aliases: []string{"l"},
-					Usage:   "Interface to listen",
-					EnvVars: []string{"LISTEN"},
+			Name:  "search",
+			Usage: "Search over the index",
+			Subcommands: []*cli.Command{
+				{
+					Name: "file",
+					Flags: []cli.Flag{
+						logLevelFlag,
+						indexFileFlag,
+						jsonFlag,
+						listenFlag,
+					},
+					Action: searchFile,
+				},
+				{
+					Name: "db",
+					Flags: []cli.Flag{
+						logLevelFlag,
+						pgFlag,
+						listenFlag,
+					},
+					Action: searchDb,
 				},
 			},
-			Action: search,
 		},
 	}
 
@@ -98,33 +137,15 @@ func initLogger(c *cli.Context) error {
 	return nil
 }
 
-func build(c *cli.Context) error {
+func buildFile(c *cli.Context) error {
 	if err := initLogger(c); err != nil {
 		return err
 	}
-	sourcesDir := c.String("sources")
-	files, err := ioutil.ReadDir(sourcesDir)
-	if err != nil {
+	engine := index.NewMemoryIndex()
+	if err := build(c, engine); err != nil {
 		return err
 	}
-
-	i := index.NewIndex(nil)
-
-	wg := &sync.WaitGroup{}
-	for _, file := range files {
-		if file.IsDir() {
-			continue
-		}
-		wg.Add(1)
-		go func(fileName string) {
-			defer wg.Done()
-			if err := readFile(fileName, i); err != nil {
-				log.Printf("cannot read file %s: %w", fileName, err)
-			}
-		}(filepath.Join(sourcesDir, file.Name()))
-	}
-	wg.Wait()
-
+	defer engine.Close()
 	indexFile := c.String("index")
 	output, err := os.Create(indexFile)
 	if err != nil {
@@ -139,10 +160,47 @@ func build(c *cli.Context) error {
 		encoder = gob.NewEncoder(output)
 	}
 
-	if err := i.Encode(encoder); err != nil {
+	if err := engine.Encode(encoder); err != nil {
 		return fmt.Errorf("can not write index: %w", err)
 	}
+	return nil
+}
 
+func buildDb(c *cli.Context) error {
+	if err := initLogger(c); err != nil {
+		return err
+	}
+	engine, err := getDbEngine(c)
+	if err != nil {
+		return err
+	}
+	defer engine.Close()
+	return build(c, engine)
+}
+
+func build(c *cli.Context, engine index.IndexEngine) error {
+	sourcesDir := c.String("sources")
+	files, err := ioutil.ReadDir(sourcesDir)
+	if err != nil {
+		return err
+	}
+
+	i := index.NewIndex(engine, nil)
+
+	wg := &sync.WaitGroup{}
+	for _, file := range files {
+		if file.IsDir() {
+			continue
+		}
+		wg.Add(1)
+		go func(fileName string) {
+			defer wg.Done()
+			if err := readFile(fileName, i); err != nil {
+				log.Error().Err(err).Msgf("cannot read file %s", fileName)
+			}
+		}(filepath.Join(sourcesDir, file.Name()))
+	}
+	wg.Wait()
 	return nil
 }
 
@@ -156,8 +214,9 @@ func readFile(name string, i *index.Index) error {
 	return i.AddSource(name, input)
 }
 
-func search(c *cli.Context) error {
-	if err := initLogger(c); err != nil {
+func searchFile(c *cli.Context) error {
+	var err error
+	if err = initLogger(c); err != nil {
 		return err
 	}
 	indexFile := c.String("index")
@@ -172,11 +231,30 @@ func search(c *cli.Context) error {
 	} else {
 		decoder = gob.NewDecoder(file)
 	}
-
-	index, err := index.Decode(decoder)
+	engine, err := index.Decode(decoder)
 	if err != nil {
-		return fmt.Errorf("can not read index file %s: %w", indexFile, err)
+		return err
 	}
+	defer engine.Close()
+
+	return search(c, engine)
+}
+
+func searchDb(c *cli.Context) error {
+	if err := initLogger(c); err != nil {
+		return err
+	}
+	engine, err := getDbEngine(c)
+	if err != nil {
+		return err
+	}
+	defer engine.Close()
+
+	return search(c, engine)
+}
+
+func search(c *cli.Context, engine index.IndexEngine) error {
+	index := index.NewIndex(engine, nil)
 
 	if c.String("listen") == "" {
 		iface, err := ifaceCli.New(os.Stdin, os.Stdout, index)
@@ -191,4 +269,14 @@ func search(c *cli.Context) error {
 		return err
 	}
 	return iface.Run()
+}
+
+func getDbEngine(c *cli.Context) (index.IndexEngine, error) {
+	pgOpt, err := pg.ParseURL(c.String("postgresql"))
+	if err != nil {
+		return nil, err
+	}
+	pgdb := pg.Connect(pgOpt)
+	log.Info().Msg("connected to db")
+	return index.NewDbIndex(pgdb), nil
 }

@@ -1,12 +1,13 @@
 /*
 Package index implements inverted index with thread-safe functions to index new documents, to search over the built
-index, to encode and to decode the index.
+index, to encode and to decode the index. Inverted index uses in-memory or database engine.
 
 Usage
 
-To create new empty index instance use NewIndex function
+To create new empty index instance use NewIndex function with created engine. E.g. new index with in-memory engine:
 
-	i := index.NewIndex()
+	engine := index.NewMemoryIndex()
+	i := index.NewIndex(engine, nil)
 
 which would create instance in thread-safe way starting internal channel listener to add new tokens.
 
@@ -16,17 +17,18 @@ and add them to the index. AddSource can be called in thread-safe way, e.g.:
 	input := bytes.NewBuffer([]byte("input document"))
 	err := i.AddSource("document name", input)
 
-To encode index to file system, network, etc. use Encode function with the object which implements Encoder interface.
+To encode in-memory index to file system, network, etc. use Encode function with the object which implements Encoder interface.
 
 	encoder := json.NewEncoder(file)
-	err := i.Encode(encoder)
+	err := engine.Encode(encoder)
 
-To create index from encoded data use Decode function.
+To create in-memory index from encoded data use Decode function.
 
 	decoder := gob.NewDecoder(file)
-	i, err := index.Decode(decoder)
+	engine, err := index.Decode(decoder)
+	i := index.NewIndex(engine, nil)
 
-Do not encode and decode index directly with for example json.Marshal because it may lead to data races.
+Do not encode and decode in-memory engine directly with for example json.Marshal because it may lead to data races.
 */
 package index
 
@@ -35,10 +37,10 @@ import (
 	"io"
 	"sort"
 	"strings"
-	"sync"
 	"unicode"
 
 	"github.com/reiver/go-porterstemmer"
+	"github.com/rs/zerolog/log"
 	"github.com/zoomio/stopwords"
 )
 
@@ -48,7 +50,7 @@ type Source struct {
 }
 
 // Occurrences contain map of document to positions
-type Occurrences map[string][]int
+type Occurrences map[*Source][]int
 
 type newToken struct {
 	source   Source
@@ -56,29 +58,37 @@ type newToken struct {
 	position int
 }
 
-// Index store list of indexed documents and inverted index.
+// IndexEngine is the interface for the data storage object.
+type IndexEngine interface {
+	// Add new token to the storage.
+	Add(token string, position int, source Source) error
+	// Get list of occurences for the list of tokens.
+	Get(tokens []string) (map[string]Occurrences, error)
+	// Close the storage.
+	Close()
+}
+
+// Index uses engine to store the list of indexed documents, the inverted index and search over the index.
 type Index struct {
-	Index          map[string]Occurrences
-	Sources        map[string]*Source
+	engine         IndexEngine
 	rangeAlgorithm RangeAlgorithm
 	chanIn         chan newToken
-	m              *sync.RWMutex
 }
 
 func (i *Index) listen() {
 	for t := range i.chanIn {
-		i.add(t.token, t.position, t.source)
+		if err := i.engine.Add(t.token, t.position, t.source); err != nil {
+			log.Error().Err(err).Msgf("error inserting %s %s %d", t.token, t.source, t.position)
+		}
 	}
 }
 
 // NewIndex return empty index.
 // Use NewIndex function instead of creating empty instance of index.
-func NewIndex(rangeAlgorithm RangeAlgorithm) *Index {
+func NewIndex(engine IndexEngine, rangeAlgorithm RangeAlgorithm) *Index {
 	i := &Index{
-		Index:          map[string]Occurrences{},
-		Sources:        map[string]*Source{},
+		engine:         engine,
 		chanIn:         make(chan newToken),
-		m:              &sync.RWMutex{},
 		rangeAlgorithm: rangeAlgorithm,
 	}
 	go i.listen()
@@ -112,22 +122,6 @@ func (i *Index) prepare(rawToken string) string {
 		return !unicode.IsLetter(r)
 	})
 	return porterstemmer.StemString(token)
-}
-
-func (i *Index) add(token string, position int, source Source) error {
-	i.m.Lock()
-	defer i.m.Unlock()
-	if _, ok := i.Sources[source.Name]; !ok {
-		i.Sources[source.Name] = &source
-	}
-	if _, ok := i.Index[token]; !ok {
-		i.Index[token] = map[string][]int{}
-	}
-	if _, ok := i.Index[token][source.Name]; !ok {
-		i.Index[token][source.Name] = []int{}
-	}
-	i.Index[token][source.Name] = append(i.Index[token][source.Name], position)
-	return nil
 }
 
 // Result contains the document description and the score.
@@ -186,15 +180,16 @@ func (i *Index) Search(query string) ([]Result, error) {
 		if stopwords.IsStopWord(token) {
 			continue
 		}
+		tokens = append(tokens, token)
+	}
 
-		i.m.RLock()
-		occurrences, ok := i.Index[token]
-		i.m.RUnlock()
-		if !ok {
-			return nil, nil
-		}
-		for document, positions := range occurrences {
-			source := i.Sources[document]
+	occurrencesList, err := i.engine.Get(tokens)
+	if err != nil || len(occurrencesList) == 0 {
+		return nil, err
+	}
+
+	for token, occurrences := range occurrencesList {
+		for source, positions := range occurrences {
 			if _, ok := items[source]; !ok {
 				items[source] = &TmpResultItem{
 					count:       0,
@@ -206,7 +201,6 @@ func (i *Index) Search(query string) ([]Result, error) {
 			item.count++
 			item.occurrences[token] = positions
 		}
-		tokens = append(tokens, token)
 	}
 
 	if i.rangeAlgorithm == nil {
@@ -214,32 +208,4 @@ func (i *Index) Search(query string) ([]Result, error) {
 	}
 
 	return i.rangeAlgorithm(items, tokens)
-}
-
-// Encoder is the interface implemented by the object that can encode data from the Index.
-type Encoder interface {
-	// Encode must be able to encode data generated by Decode function.
-	Encode(e interface{}) error
-}
-
-// Encode is the thread-safe function to encode Index.
-func (i *Index) Encode(encoder Encoder) error {
-	i.m.RLock()
-	defer i.m.RUnlock()
-
-	return encoder.Encode(i)
-}
-
-// Decoder is the interface implemented by the object that can decode data into the Index.
-type Decoder interface {
-	// Decode must be able to decode data generated by Encode function.
-	Decode(e interface{}) error
-}
-
-// Decode is the thread-safe function to extract index from the encoded data.
-func Decode(decoder Decoder) (*Index, error) {
-	i := NewIndex(nil)
-	i.m.Lock()
-	defer i.m.Unlock()
-	return i, decoder.Decode(i)
 }
