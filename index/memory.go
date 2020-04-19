@@ -38,15 +38,19 @@ func (i *MemoryIndex) Add(token string, position int, source Source) error {
 	return nil
 }
 
-func (i *MemoryIndex) Get(token string) (Occurrences, error) {
+func (i *MemoryIndex) Get(tokens []string) (map[string]Occurrences, error) {
 	i.m.RLock()
 	defer i.m.RUnlock()
-	result := Occurrences{}
-	for document, positions := range i.index[token] {
-		source := i.sources[document]
-		result[source] = positions
+	results := map[string]Occurrences{}
+	for _, token := range tokens {
+		result := Occurrences{}
+		for document, positions := range i.index[token] {
+			source := i.sources[document]
+			result[source] = positions
+		}
+		results[token] = result
 	}
-	return result, nil
+	return results, nil
 }
 
 func (i *MemoryIndex) Close() {}

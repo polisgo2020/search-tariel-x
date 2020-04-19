@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/gob"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	stdLog "log"
@@ -183,6 +184,9 @@ func search(c *cli.Context) error {
 		if err != nil {
 			return err
 		}
+	}
+	if engine == nil {
+		return errors.New("no engine selected")
 	}
 	defer engine.Close()
 

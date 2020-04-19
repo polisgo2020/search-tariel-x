@@ -9,55 +9,31 @@ import (
 
 func TestIndex_AddSource(t *testing.T) {
 	i := &Index{
-		Index:   map[string]Occurrences{},
-		Sources: map[string]*Source{},
-		chanIn:  make(chan newToken, 10000),
-		m:       &sync.RWMutex{},
+		chanIn: make(chan newToken, 10000),
 	}
 	i.AddSource("file1", bytes.NewBufferString("an apple banana raspberry"))
 	i.AddSource("file2", bytes.NewBufferString("apple the banana orange"))
 	close(i.chanIn)
 
-	for t := range i.chanIn {
-		i.add(t.token, t.position, t.source)
-	}
-
-	expected := map[string]Occurrences{
-		"appl":      Occurrences{"file1": []int{0}, "file2": []int{0}},
-		"banana":    Occurrences{"file1": []int{1}, "file2": []int{1}},
-		"orang":     Occurrences{"file2": []int{2}},
-		"raspberri": Occurrences{"file1": []int{2}},
-	}
-
-	if !reflect.DeepEqual(i.Index, expected) {
-		t.Errorf("%v is not equal to expected %v", i.Index, expected)
-	}
-}
-
-func TestIndex_Add(t *testing.T) {
-	i := &Index{
-		Index:   map[string]Occurrences{},
-		Sources: map[string]*Source{},
+	e := MemoryIndex{
+		index:   map[string]MemoryOccurrences{},
+		sources: map[string]*Source{},
 		m:       &sync.RWMutex{},
 	}
-	s1 := Source{Name: "file1"}
-	s2 := Source{Name: "file2"}
-	i.add("appl", 0, s1)
-	i.add("appl", 0, s2)
-	i.add("banana", 1, s1)
-	i.add("banana", 1, s2)
-	i.add("orang", 2, s2)
-	i.add("raspberri", 2, s1)
 
-	expected := map[string]Occurrences{
-		"appl":      Occurrences{"file1": []int{0}, "file2": []int{0}},
-		"banana":    Occurrences{"file1": []int{1}, "file2": []int{1}},
-		"orang":     Occurrences{"file2": []int{2}},
-		"raspberri": Occurrences{"file1": []int{2}},
+	for t := range i.chanIn {
+		e.Add(t.token, t.position, t.source)
 	}
 
-	if !reflect.DeepEqual(i.Index, expected) {
-		t.Errorf("%v is not equal to expected %v", i.Index, expected)
+	expected := map[string]MemoryOccurrences{
+		"appl":      {"file1": []int{0}, "file2": []int{0}},
+		"banana":    {"file1": []int{1}, "file2": []int{1}},
+		"orang":     {"file2": []int{2}},
+		"raspberri": {"file1": []int{2}},
+	}
+
+	if !reflect.DeepEqual(e.index, expected) {
+		t.Errorf("%v is not equal to expected %v", e.index, expected)
 	}
 }
 
@@ -126,34 +102,60 @@ func TestScoreByCount2(t *testing.T) {
 	}
 }
 
+type emptyEngine struct {
+	results      map[string]Occurrences
+	sourcesCount int
+}
+
+func (ee *emptyEngine) Add(token string, position int, source Source) error {
+	ee.sourcesCount++
+	return nil
+}
+
+func (ee *emptyEngine) Get(tokens []string) (map[string]Occurrences, error) {
+	return ee.results, nil
+}
+
+func (ee *emptyEngine) Close() {}
+
 func TestIndex_Search(t *testing.T) {
+	ee := &emptyEngine{}
+
 	i := &Index{
-		Index:   map[string]Occurrences{},
-		Sources: map[string]*Source{},
-		m:       &sync.RWMutex{},
-		chanIn:  make(chan newToken, 10000),
+		engine: ee,
+		chanIn: make(chan newToken, 10000),
 	}
 	i.AddSource("file1", bytes.NewBufferString("an apple banana raspberry"))
 	i.AddSource("file2", bytes.NewBufferString("apple apple the banana orange"))
 	close(i.chanIn)
 
-	for t := range i.chanIn {
-		i.add(t.token, t.position, t.source)
+	s1 := Source{Name: "file1"}
+	s2 := Source{Name: "file2"}
+
+	ee.results = map[string]Occurrences{
+		"appl": {
+			&s1: []int{0},
+			&s2: []int{0, 1},
+		},
+		"banana": {
+			&s1: []int{1},
+			&s2: []int{2},
+		},
 	}
 
 	expected := map[*Source]*TmpResultItem{
-		i.Sources["file1"]: {
+		&s1: {
 			count: 2,
 			occurrences: map[string][]int{
-				"appl":   {0},
 				"banana": {1},
+				"appl":   {0},
 			},
 		},
-		i.Sources["file2"]: {
+		&s2: {
 			count: 2,
 			occurrences: map[string][]int{
-				"appl":   {0, 1},
 				"banana": {2},
+				"appl":   {0, 1},
 			},
 		},
 	}
@@ -168,40 +170,14 @@ func TestIndex_Search(t *testing.T) {
 	i.Search("the apple banana")
 }
 
-func TestIndex_Search2(t *testing.T) {
-	i := &Index{
-		Index:   map[string]Occurrences{},
-		Sources: map[string]*Source{},
-		m:       &sync.RWMutex{},
-		chanIn:  make(chan newToken, 10000),
-	}
-	i.AddSource("file1", bytes.NewBufferString("an apple banana raspberry"))
-	i.AddSource("file2", bytes.NewBufferString("apple apple the banana orange"))
-	close(i.chanIn)
-
-	for t := range i.chanIn {
-		i.add(t.token, t.position, t.source)
-	}
-
-	expected := map[*Source]*TmpResultItem{}
-
-	i.rangeAlgorithm = func(actual map[*Source]*TmpResultItem, tokens []string) (results []Result, err error) {
-		if !reflect.DeepEqual(actual, expected) {
-			t.Errorf("%v is not equal to expected %v", actual, expected)
-		}
-		return nil, nil
-	}
-
-	i.Search("the window apple")
-}
-
 func TestNewIndex(t *testing.T) {
-	i := NewIndex(nil)
+	ee := &emptyEngine{}
+	i := NewIndex(ee, nil)
 	i.AddSource("file1", bytes.NewBufferString("an apple banana raspberry"))
 	i.AddSource("file2", bytes.NewBufferString("apple apple the banana orange"))
 	close(i.chanIn)
 
-	if len(i.Sources) != 2 {
-		t.Errorf("Count of documents %d != 2", len(i.Sources))
+	if ee.sourcesCount != 7 {
+		t.Errorf("Count of documents %d != 2", ee.sourcesCount)
 	}
 }

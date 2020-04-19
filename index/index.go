@@ -57,7 +57,7 @@ type newToken struct {
 
 type IndexEngine interface {
 	Add(token string, position int, source Source) error
-	Get(token string) (Occurrences, error)
+	Get(tokens []string) (map[string]Occurrences, error)
 	Close()
 }
 
@@ -171,11 +171,15 @@ func (i *Index) Search(query string) ([]Result, error) {
 		if stopwords.IsStopWord(token) {
 			continue
 		}
+		tokens = append(tokens, token)
+	}
 
-		occurrences, err := i.engine.Get(token)
-		if err != nil || len(occurrences) == 0 {
-			return nil, err
-		}
+	occurrencesList, err := i.engine.Get(tokens)
+	if err != nil || len(occurrencesList) == 0 {
+		return nil, err
+	}
+
+	for token, occurrences := range occurrencesList {
 		for source, positions := range occurrences {
 			if _, ok := items[source]; !ok {
 				items[source] = &TmpResultItem{
@@ -188,7 +192,6 @@ func (i *Index) Search(query string) ([]Result, error) {
 			item.count++
 			item.occurrences[token] = positions
 		}
-		tokens = append(tokens, token)
 	}
 
 	if i.rangeAlgorithm == nil {

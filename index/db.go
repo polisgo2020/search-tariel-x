@@ -1,14 +1,33 @@
 package index
 
 import (
+	"context"
+
 	"github.com/go-pg/pg/v9"
+	"github.com/rs/zerolog/log"
 )
+
+type dbLogger struct{}
+
+func (d dbLogger) BeforeQuery(c context.Context, q *pg.QueryEvent) (context.Context, error) {
+	return c, nil
+}
+
+func (d dbLogger) AfterQuery(c context.Context, q *pg.QueryEvent) error {
+	uq, err := q.FormattedQuery()
+	if err != nil {
+		return err
+	}
+	log.Debug().Str("query", uq).Msg("query")
+	return nil
+}
 
 type DbIndex struct {
 	pg *pg.DB
 }
 
 func NewDbIndex(pg *pg.DB) *DbIndex {
+	pg.AddQueryHook(dbLogger{})
 	i := &DbIndex{
 		pg: pg,
 	}
@@ -62,20 +81,41 @@ func (i *DbIndex) getDocument(name string) (*Document, error) {
 	return doc, err
 }
 
-func (i *DbIndex) Get(token string) (Occurrences, error) {
+func (i *DbIndex) Get(tokens []string) (map[string]Occurrences, error) {
+	type item struct {
+		Position int    `sql:"position"`
+		Token    string `sql:"token"`
+		Name     string `sql:"name"`
+	}
+	var items []item
+
 	_, err := i.pg.Query(
-		pg.Scan(&id),
-		`SELECT occurences.file_id, SUM(occurences.count) as sum, 
-					array_agg(occurences.word_id) as words 
-				FROM occurences
-				JOIN words on occurences.word_id = words.id
-				WHERE words.word IN ('hello', 'cat')
-				GROUP BY occurences.file_id
-				ORDER BY sum DESC
-			)`,
-		comment.Author, comment.Content, comment.PostID,
+		&items,
+		`SELECT position, t.token, d.name FROM occurrences
+			JOIN tokens t ON occurrences.token_id = t.id
+			JOIN documents d on occurrences.document_id = d.id
+			WHERE t.token IN (?);`,
+		pg.In(tokens),
 	)
-	return nil, err
+
+	if err != nil {
+		return nil, err
+	}
+	results := map[string]Occurrences{}
+	documents := map[string]*Source{}
+	for _, item := range items {
+		if _, ok := documents[item.Name]; !ok {
+			documents[item.Name] = &Source{
+				Name: item.Name,
+			}
+		}
+		if _, ok := results[item.Token]; !ok {
+			results[item.Token] = Occurrences{}
+		}
+		doc := documents[item.Name]
+		results[item.Token][doc] = append(results[item.Token][doc], item.Position)
+	}
+	return results, err
 }
 
 func (i *DbIndex) Close() {
