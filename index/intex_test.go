@@ -16,8 +16,8 @@ func TestIndex_AddSource(t *testing.T) {
 	close(i.chanIn)
 
 	e := MemoryIndex{
-		index:   map[string]MemoryOccurrences{},
-		sources: map[string]*Source{},
+		Index:   map[string]MemoryOccurrences{},
+		Sources: map[string]*Source{},
 		m:       &sync.RWMutex{},
 	}
 
@@ -32,8 +32,8 @@ func TestIndex_AddSource(t *testing.T) {
 		"raspberri": {"file1": []int{2}},
 	}
 
-	if !reflect.DeepEqual(e.index, expected) {
-		t.Errorf("%v is not equal to expected %v", e.index, expected)
+	if !reflect.DeepEqual(e.Index, expected) {
+		t.Errorf("%v is not equal to expected %v", e.Index, expected)
 	}
 }
 

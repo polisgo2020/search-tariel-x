@@ -8,8 +8,8 @@ import (
 
 func TestMemoryIndex_Add(t *testing.T) {
 	i := &MemoryIndex{
-		index:   map[string]MemoryOccurrences{},
-		sources: map[string]*Source{},
+		Index:   map[string]MemoryOccurrences{},
+		Sources: map[string]*Source{},
 		m:       &sync.RWMutex{},
 	}
 	s1 := Source{Name: "file1"}
@@ -28,15 +28,15 @@ func TestMemoryIndex_Add(t *testing.T) {
 		"raspberri": {"file1": []int{2}},
 	}
 
-	if !reflect.DeepEqual(i.index, expected) {
-		t.Errorf("%v is not equal to expected %v", i.index, expected)
+	if !reflect.DeepEqual(i.Index, expected) {
+		t.Errorf("%v is not equal to expected %v", i.Index, expected)
 	}
 }
 
 func TestMemoryIndex_Get(t *testing.T) {
 	i := &MemoryIndex{
-		index:   map[string]MemoryOccurrences{},
-		sources: map[string]*Source{},
+		Index:   map[string]MemoryOccurrences{},
+		Sources: map[string]*Source{},
 		m:       &sync.RWMutex{},
 	}
 	s1 := Source{Name: "file1"}
@@ -55,12 +55,12 @@ func TestMemoryIndex_Get(t *testing.T) {
 
 	expected := map[string]Occurrences{
 		"appl": {
-			i.sources["file1"]: []int{0},
-			i.sources["file2"]: []int{0},
+			i.Sources["file1"]: []int{0},
+			i.Sources["file2"]: []int{0},
 		},
 		"banana": {
-			i.sources["file1"]: []int{1},
-			i.sources["file2"]: []int{1},
+			i.Sources["file1"]: []int{1},
+			i.Sources["file2"]: []int{1},
 		},
 	}
 

@@ -8,15 +8,15 @@ import (
 type MemoryOccurrences map[string][]int
 
 type MemoryIndex struct {
-	index   map[string]MemoryOccurrences
-	sources map[string]*Source
+	Index   map[string]MemoryOccurrences
+	Sources map[string]*Source
 	m       *sync.RWMutex
 }
 
 func NewMemoryIndex() *MemoryIndex {
 	i := &MemoryIndex{
-		index:   map[string]MemoryOccurrences{},
-		sources: map[string]*Source{},
+		Index:   map[string]MemoryOccurrences{},
+		Sources: map[string]*Source{},
 		m:       &sync.RWMutex{},
 	}
 	return i
@@ -25,16 +25,16 @@ func NewMemoryIndex() *MemoryIndex {
 func (i *MemoryIndex) Add(token string, position int, source Source) error {
 	i.m.Lock()
 	defer i.m.Unlock()
-	if _, ok := i.sources[source.Name]; !ok {
-		i.sources[source.Name] = &source
+	if _, ok := i.Sources[source.Name]; !ok {
+		i.Sources[source.Name] = &source
 	}
-	if _, ok := i.index[token]; !ok {
-		i.index[token] = map[string][]int{}
+	if _, ok := i.Index[token]; !ok {
+		i.Index[token] = map[string][]int{}
 	}
-	if _, ok := i.index[token][source.Name]; !ok {
-		i.index[token][source.Name] = []int{}
+	if _, ok := i.Index[token][source.Name]; !ok {
+		i.Index[token][source.Name] = []int{}
 	}
-	i.index[token][source.Name] = append(i.index[token][source.Name], position)
+	i.Index[token][source.Name] = append(i.Index[token][source.Name], position)
 	return nil
 }
 
@@ -44,8 +44,8 @@ func (i *MemoryIndex) Get(tokens []string) (map[string]Occurrences, error) {
 	results := map[string]Occurrences{}
 	for _, token := range tokens {
 		result := Occurrences{}
-		for document, positions := range i.index[token] {
-			source := i.sources[document]
+		for document, positions := range i.Index[token] {
+			source := i.Sources[document]
 			result[source] = positions
 		}
 		results[token] = result
