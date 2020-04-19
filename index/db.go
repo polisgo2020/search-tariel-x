@@ -2,6 +2,9 @@ package index
 
 import (
 	"context"
+	"fmt"
+	"sync"
+	"time"
 
 	"github.com/go-pg/pg/v9"
 	"github.com/rs/zerolog/log"
@@ -23,32 +26,63 @@ func (d dbLogger) AfterQuery(c context.Context, q *pg.QueryEvent) error {
 }
 
 type DbIndex struct {
-	pg *pg.DB
+	pg             *pg.DB
+	tokensCache    map[string]int
+	tokensM        sync.RWMutex
+	documentsCache map[string]int
+	documentsM     sync.RWMutex
+	insertC        chan Occurrence
 }
 
 func NewDbIndex(pg *pg.DB) *DbIndex {
 	pg.AddQueryHook(dbLogger{})
 	i := &DbIndex{
-		pg: pg,
+		pg:             pg,
+		tokensCache:    map[string]int{},
+		tokensM:        sync.RWMutex{},
+		documentsCache: map[string]int{},
+		documentsM:     sync.RWMutex{},
+		insertC:        make(chan Occurrence),
 	}
+	go i.flush()
 	return i
 }
 
 type Token struct {
-	ID    int    `sql:"id,pk"`
-	Token string `sql:"token"`
+	ID    int    `pg:"id,pk"`
+	Token string `pg:"token"`
 }
 
 type Document struct {
-	ID   int    `sql:"id,pk"`
-	Name string `sql:"name"`
+	ID   int    `pg:"id,pk"`
+	Name string `pg:"name"`
 }
 
 type Occurrence struct {
-	ID         int `sql:"id,pk"`
-	TokenID    int `sql:"token_id"`
-	DocumentID int `sql:"document_id"`
-	Position   int `sql:"position"`
+	ID         int `pg:"id,pk"`
+	TokenID    int `pg:"token_id"`
+	DocumentID int `pg:"document_id"`
+	Position   int `pg:"position"`
+}
+
+func (i *DbIndex) flush() {
+	var insertList []Occurrence
+
+	ticker := time.NewTicker(10 * time.Second)
+
+	for {
+		select {
+		case <-ticker.C:
+			if _, err := i.pg.Model(&insertList).Insert(); err != nil {
+				log.Err(err).Msg("error inserting rows")
+				continue
+			}
+			log.Info().Msgf("inserted %d occurrences", len(insertList))
+			insertList = []Occurrence{}
+		case occurrence := <-i.insertC:
+			insertList = append(insertList, occurrence)
+		}
+	}
 }
 
 func (i *DbIndex) Add(token string, position int, source Source) error {
@@ -60,32 +94,83 @@ func (i *DbIndex) Add(token string, position int, source Source) error {
 	if err != nil {
 		return err
 	}
-	occurrence := Occurrence{
+	i.insertC <- Occurrence{
 		TokenID:    tkn.ID,
 		DocumentID: doc.ID,
 		Position:   position,
 	}
-	_, err = i.pg.Model(&occurrence).Returning("*").Insert()
 	return err
 }
 
 func (i *DbIndex) getToken(token string) (*Token, error) {
-	tkn := &Token{Token: token}
-	err := i.pg.Select(tkn)
-	return tkn, err
+	i.tokensM.RLock()
+	if id, ok := i.tokensCache[token]; ok {
+		i.tokensM.RUnlock()
+		return &Token{
+			ID:    id,
+			Token: token,
+		}, nil
+	}
+	i.tokensM.RUnlock()
+
+	tkn := &Token{}
+	err := i.pg.Model(tkn).Where("token=?", token).Select()
+	if err != nil && err != pg.ErrNoRows {
+		return nil, fmt.Errorf("error selecting %s %w", token, err)
+	}
+
+	if err == nil {
+		return tkn, nil
+	}
+
+	i.tokensM.Lock()
+	defer i.tokensM.Unlock()
+	tkn.Token = token
+	if _, err := i.pg.Model(tkn).Returning("*").Insert(); err != nil {
+		return nil, fmt.Errorf("error inserting %s %w", token, err)
+	}
+	log.Debug().Msgf("add token %s %d to cache", token, tkn.ID)
+	i.tokensCache[token] = tkn.ID
+	return tkn, nil
 }
 
 func (i *DbIndex) getDocument(name string) (*Document, error) {
-	doc := &Document{Name: name}
-	err := i.pg.Select(doc)
+	i.documentsM.RLock()
+	if id, ok := i.documentsCache[name]; ok {
+		i.documentsM.RUnlock()
+		return &Document{
+			ID:   id,
+			Name: name,
+		}, nil
+	}
+	i.documentsM.RUnlock()
+
+	doc := &Document{}
+	err := i.pg.Model(doc).Where("name=?", name).Select()
+	if err != nil && err != pg.ErrNoRows {
+		return nil, fmt.Errorf("error selecting %s %w", name, err)
+	}
+
+	if err == nil {
+		return doc, err
+	}
+
+	i.documentsM.Lock()
+	defer i.documentsM.Unlock()
+	doc.Name = name
+	if _, err := i.pg.Model(doc).Returning("*").Insert(); err != nil {
+		return nil, fmt.Errorf("error inserting %s %w", name, err)
+	}
+	log.Debug().Msgf("add document %s %d to cache", name, doc.ID)
+	i.documentsCache[name] = doc.ID
 	return doc, err
 }
 
 func (i *DbIndex) Get(tokens []string) (map[string]Occurrences, error) {
 	type item struct {
-		Position int    `sql:"position"`
-		Token    string `sql:"token"`
-		Name     string `sql:"name"`
+		Position int    `pg:"position"`
+		Token    string `pg:"token"`
+		Name     string `pg:"name"`
 	}
 	var items []item
 

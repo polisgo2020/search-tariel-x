@@ -38,6 +38,7 @@ import (
 	"unicode"
 
 	"github.com/reiver/go-porterstemmer"
+	"github.com/rs/zerolog/log"
 	"github.com/zoomio/stopwords"
 )
 
@@ -70,7 +71,9 @@ type Index struct {
 
 func (i *Index) listen() {
 	for t := range i.chanIn {
-		i.engine.Add(t.token, t.position, t.source)
+		if err := i.engine.Add(t.token, t.position, t.source); err != nil {
+			log.Error().Err(err).Msgf("error inserting %s %s %d", t.token, t.source, t.position)
+		}
 	}
 }
 
