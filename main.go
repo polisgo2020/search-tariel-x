@@ -37,7 +37,7 @@ func main() {
 		Name:    "postgresql",
 		Aliases: []string{"pg"},
 		Usage:   "Postgresql connection strings",
-		EnvVars: []string{"PG_SQL"},
+		EnvVars: []string{"PGSQL"},
 	}
 
 	jsonFlag := &cli.BoolFlag{
