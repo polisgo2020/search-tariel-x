@@ -8,9 +8,10 @@
     <input type="submit" value="Search">
 </form>
 <h3>Results</h3>
-{{range .Results}}
-    <b>{{.Document.Name}}</b>
-    <br />
-{{end}}
+<ul>
+    {{range .Results}}
+    <li>{{.Document.Name}}</li>
+    {{end}}
+</ul>
 </body>
 </html>

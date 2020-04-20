@@ -1,8 +1,8 @@
-name: Deploy
+name: Test
 on:
   push:
     branches-ignore:
-      - master 
+      - master
 
 jobs:
   test:
