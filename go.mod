@@ -7,6 +7,7 @@ require (
 	github.com/cpuguy83/go-md2man/v2 v2.0.0 // indirect
 	github.com/go-pg/migrations/v7 v7.1.9
 	github.com/go-pg/pg/v9 v9.1.6
+	github.com/golangci/golangci-lint v1.24.0 // indirect
 	github.com/reiver/go-porterstemmer v1.0.1
 	github.com/rs/zerolog v1.18.0
 	github.com/urfave/cli/v2 v2.2.0

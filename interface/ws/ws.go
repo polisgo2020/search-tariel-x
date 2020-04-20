@@ -75,7 +75,9 @@ func logMiddleware(next http.Handler) http.Handler {
 }
 
 func (ws *Ws) indexHandler(w http.ResponseWriter, r *http.Request) {
-	ws.indexTpl.Execute(w, nil)
+	if err := ws.indexTpl.Execute(w, nil); err != nil {
+		log.Error().Err(err).Msg("error rendering template")
+	}
 }
 
 func (ws *Ws) searchHandler(w http.ResponseWriter, r *http.Request) {
@@ -90,13 +92,15 @@ func (ws *Ws) searchHandler(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(w, "Error search %q over index.", query)
 		}
 	}
-	ws.searchTpl.Execute(w, struct {
+	if err := ws.searchTpl.Execute(w, struct {
 		Results []index.Result
 		Query   string
 	}{
 		Results: results,
 		Query:   query,
-	})
+	}); err != nil {
+		log.Error().Err(err).Msg("error rendering template")
+	}
 }
 
 func (ws *Ws) Run() error {

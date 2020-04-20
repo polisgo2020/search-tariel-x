@@ -135,7 +135,6 @@ type Result struct {
 type TmpResultItem struct {
 	count       int
 	occurrences map[string][]int
-	score       int
 }
 
 type RangeAlgorithm func(items map[*Source]*TmpResultItem, tokens []string) ([]Result, error)

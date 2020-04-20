@@ -42,5 +42,4 @@ func (c *Cli) Run() error {
 			fmt.Fprintf(c.out, "%d. %s\n", i+1, result.Document.Name)
 		}
 	}
-	return nil
 }

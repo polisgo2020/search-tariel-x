@@ -11,8 +11,12 @@ func TestIndex_AddSource(t *testing.T) {
 	i := &Index{
 		chanIn: make(chan newToken, 10000),
 	}
-	i.AddSource("file1", bytes.NewBufferString("an apple banana raspberry"))
-	i.AddSource("file2", bytes.NewBufferString("apple the banana orange"))
+	if err := i.AddSource("file1", bytes.NewBufferString("an apple banana raspberry")); err != nil {
+		t.Error(err)
+	}
+	if err := i.AddSource("file2", bytes.NewBufferString("apple the banana orange")); err != nil {
+		t.Error(err)
+	}
 	close(i.chanIn)
 
 	e := MemoryIndex{
@@ -21,8 +25,10 @@ func TestIndex_AddSource(t *testing.T) {
 		m:       &sync.RWMutex{},
 	}
 
-	for t := range i.chanIn {
-		e.Add(t.token, t.position, t.source)
+	for tok := range i.chanIn {
+		if err := e.Add(tok.token, tok.position, tok.source); err != nil {
+			t.Error(err)
+		}
 	}
 
 	expected := map[string]MemoryOccurrences{
@@ -125,8 +131,12 @@ func TestIndex_Search(t *testing.T) {
 		engine: ee,
 		chanIn: make(chan newToken, 10000),
 	}
-	i.AddSource("file1", bytes.NewBufferString("an apple banana raspberry"))
-	i.AddSource("file2", bytes.NewBufferString("apple apple the banana orange"))
+	if err := i.AddSource("file1", bytes.NewBufferString("an apple banana raspberry")); err != nil {
+		t.Error(err)
+	}
+	if err := i.AddSource("file2", bytes.NewBufferString("apple apple the banana orange")); err != nil {
+		t.Error(err)
+	}
 	close(i.chanIn)
 
 	s1 := Source{Name: "file1"}
@@ -167,14 +177,20 @@ func TestIndex_Search(t *testing.T) {
 		return nil, nil
 	}
 
-	i.Search("the apple banana")
+	if _, err := i.Search("the apple banana"); err != nil {
+		t.Error(err)
+	}
 }
 
 func TestNewIndex(t *testing.T) {
 	ee := &emptyEngine{}
 	i := NewIndex(ee, nil)
-	i.AddSource("file1", bytes.NewBufferString("an apple banana raspberry"))
-	i.AddSource("file2", bytes.NewBufferString("apple apple the banana orange"))
+	if err := i.AddSource("file1", bytes.NewBufferString("an apple banana raspberry")); err != nil {
+		t.Error(err)
+	}
+	if err := i.AddSource("file2", bytes.NewBufferString("apple apple the banana orange")); err != nil {
+		t.Error(err)
+	}
 	close(i.chanIn)
 
 	if ee.sourcesCount != 7 {

@@ -14,12 +14,24 @@ func TestMemoryIndex_Add(t *testing.T) {
 	}
 	s1 := Source{Name: "file1"}
 	s2 := Source{Name: "file2"}
-	i.Add("appl", 0, s1)
-	i.Add("appl", 0, s2)
-	i.Add("banana", 1, s1)
-	i.Add("banana", 1, s2)
-	i.Add("orang", 2, s2)
-	i.Add("raspberri", 2, s1)
+	if err := i.Add("appl", 0, s1); err != nil {
+		t.Error(err)
+	}
+	if err := i.Add("appl", 0, s2); err != nil {
+		t.Error(err)
+	}
+	if err := i.Add("banana", 1, s1); err != nil {
+		t.Error(err)
+	}
+	if err := i.Add("banana", 1, s2); err != nil {
+		t.Error(err)
+	}
+	if err := i.Add("orang", 2, s2); err != nil {
+		t.Error(err)
+	}
+	if err := i.Add("raspberri", 2, s1); err != nil {
+		t.Error(err)
+	}
 
 	expected := map[string]MemoryOccurrences{
 		"appl":      {"file1": []int{0}, "file2": []int{0}},
@@ -41,12 +53,24 @@ func TestMemoryIndex_Get(t *testing.T) {
 	}
 	s1 := Source{Name: "file1"}
 	s2 := Source{Name: "file2"}
-	i.Add("appl", 0, s1)
-	i.Add("appl", 0, s2)
-	i.Add("banana", 1, s1)
-	i.Add("banana", 1, s2)
-	i.Add("orang", 2, s2)
-	i.Add("raspberri", 2, s1)
+	if err := i.Add("appl", 0, s1); err != nil {
+		t.Error(err)
+	}
+	if err := i.Add("appl", 0, s2); err != nil {
+		t.Error(err)
+	}
+	if err := i.Add("banana", 1, s1); err != nil {
+		t.Error(err)
+	}
+	if err := i.Add("banana", 1, s2); err != nil {
+		t.Error(err)
+	}
+	if err := i.Add("orang", 2, s2); err != nil {
+		t.Error(err)
+	}
+	if err := i.Add("raspberri", 2, s1); err != nil {
+		t.Error(err)
+	}
 
 	occurences, err := i.Get([]string{"appl", "banana"})
 	if err != nil {
