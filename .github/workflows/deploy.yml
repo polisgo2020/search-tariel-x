@@ -1,7 +1,8 @@
 name: Deploy
 on:
-  tags:
-    - v*
+  push:
+    branches:
+      - master
 
 jobs:
   push_to_registry:
