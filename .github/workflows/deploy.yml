@@ -1,5 +1,7 @@
 name: Deploy
-on: tags
+on:
+  tags:
+    - v*
 
 jobs:
   push_to_registry:
