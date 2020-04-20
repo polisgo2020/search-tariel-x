@@ -12,5 +12,6 @@ FROM alpine:latest
 RUN apk --no-cache add ca-certificates
 WORKDIR /usr/app
 COPY --from=0 /usr/src/search .
+COPY --from=0 /usr/src/interface/ws/templates/* ./interface/ws/templates
 ENTRYPOINT ["/usr/app/search"]
 CMD ["search", "db"]

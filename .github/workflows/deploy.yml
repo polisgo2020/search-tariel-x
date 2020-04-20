@@ -20,3 +20,11 @@ jobs:
           repository: polisgo2020/search-tariel-x/search
           tag_with_ref: true
           tag_with_sha: true
+      - name: Update service
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.KEY }}
+          port: ${{ secrets.PORT }}
+          script: docker service update --force search
